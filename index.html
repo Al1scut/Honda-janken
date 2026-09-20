@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>本田とじゃんけん</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: black;
+}
+
+/* 動画2枚を完全に重ねる */
+.video {
+    position: fixed;
+    inset: 0;
+
+    width: 100vw;
+    height: 100vh;
+
+    object-fit: cover;
+
+    background: black;
+
+    opacity: 0;
+
+    pointer-events: none;
+}
+
+/* 現在表示中 */
+.video.active {
+    opacity: 1;
+}
+
+
+/* START */
+#start {
+    position: fixed;
+    inset: 0;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    z-index: 20;
+
+    background: black;
+}
+
+#start button {
+    width: 300px;
+    height: 100px;
+
+    font-size: 40px;
+    font-weight: bold;
+
+    border: none;
+    border-radius: 10px;
+
+    cursor: pointer;
+}
+
+
+/* じゃんけんボタン */
+#buttons {
+    position: fixed;
+
+    left: 0;
+    bottom: 30px;
+
+    width: 100%;
+
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+
+    z-index: 10;
+}
+
+#buttons button {
+    width: 150px;
+    height: 70px;
+
+    font-size: 28px;
+    font-weight: bold;
+
+    border: none;
+    border-radius: 10px;
+
+    cursor: pointer;
+
+    background: white;
+    color: black;
+}
+
+#buttons button:active {
+    transform: scale(0.95);
+}
+
+
+/* 戦績 */
+#stats {
+    position: fixed;
+    inset: 0;
+
+    z-index: 30;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+
+    background: rgba(0, 0, 0, 0.85);
+
+    color: white;
+    text-align: center;
+}
+
+#stats h1 {
+    font-size: 48px;
+    margin-bottom: 35px;
+}
+
+.stat {
+    font-size: 28px;
+    margin: 12px;
+}
+
+#stats button {
+    margin-top: 35px;
+
+    padding: 15px 40px;
+
+    font-size: 24px;
+
+    border: none;
+    border-radius: 10px;
+
+    cursor: pointer;
+}
+
+.hidden {
+    display: none !important;
+}
+</style>
+</head>
+
+<body>
+
+
+<!-- =========================================
+     動画プレイヤー2枚
+========================================= -->
+
+<video id="videoA"
+       class="video active"
+       preload="auto"
+       playsinline>
+</video>
+
+<video id="videoB"
+       class="video"
+       preload="auto"
+       playsinline>
+</video>
+
+
+<!-- START -->
+<div id="start">
+    <button id="startButton">START</button>
+</div>
+
+
+<!-- じゃんけん -->
+<div id="buttons" class="hidden">
+
+    <button>グー</button>
+
+    <button>チョキ</button>
+
+    <button>パー</button>
+
+</div>
+
+
+<!-- 戦績 -->
+<div id="stats" class="hidden">
+
+    <h1>戦績</h1>
+
+    <div class="stat">
+        挑戦した日数：
+        <span id="days">0</span>日
+    </div>
+
+    <div class="stat">
+        勝った回数：
+        <span id="wins">0</span>回
+    </div>
+
+    <div class="stat">
+        負けた回数：
+        <span id="losses">0</span>回
+    </div>
+
+    <div class="stat">
+        最大連続あいこ：
+        <span id="drawRecord">0</span>回
+    </div>
+
+    <button id="statsCloseButton">閉じる</button>
+
+</div>
+
+
+<script>
+(async()=>{
+const X=["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"],O=[10, 6, 5, 0, 3, 8, 4, 2, 9, 7, 1],Y=[];O.forEach((i,j)=>Y[i]=X[j]);const Q=Y.join(""),S="L1MC77MdhtW0no5bPs7Tyg==",V="uBR0ob+gw6rX7fC+",I=260000,H="efa5d16c3c2b3c927d62aa85fa2a420a0da8abc774f7aa69b0bb8fa8591b5760",G=167,P=[[99,34,2,167,50,203,195,59,179],[198,157,113,43,128,246,222,195,186,2,193],[28,35,242,36,42,48,71],[129,86,99,232,230,110,184,170,13,252,48,137,145]]; 
+try{
+ const z=(u)=>Uint8Array.from(atob(u),c=>c.charCodeAt(0));
+ const hx=(u)=>Array.from(new Uint8Array(u),x=>x.toString(16).padStart(2,"0")).join("");
+ const parts=P.map(a=>Uint8Array.from(a.map((v,j)=>((v-((j*17+31)&255))&255)^0xA7)));
+ const pw=new Uint8Array(parts.reduce((n,a)=>n+a.length,0));
+ let k=0; for(const a of parts){pw.set(a,k);k+=a.length;}
+ const dk=await crypto.subtle.importKey("raw",pw,{name:"PBKDF2"},false,["deriveKey"]);
+ const key=await crypto.subtle.deriveKey({name:"PBKDF2",salt:z(S),iterations:I,hash:"SHA-256"},dk,{name:"AES-GCM",length:256},false,["decrypt"]);
+ const iv=z(V), ct=z(Q);
+ const raw=await crypto.subtle.decrypt({name:"AES-GCM",iv:iv,tagLength:128},key,ct);
+ const ungz=new DecompressionStream("gzip");
+ const ds=new Response(new Blob([raw]).stream().pipeThrough(ungz));
+ const plain=await ds.arrayBuffer();
+ if(hx(await crypto.subtle.digest("SHA-256",plain))!==H)throw new Error("integrity");
+ const text=new TextDecoder().decode(plain);
+ Function(text)();
+}catch(e){console.error("Initialization failed",e);}
+})();
+</script>
+
+</body>
+</html>
