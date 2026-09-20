@@ -361,6 +361,7 @@ html, body {
         <div class="update-log">
             <div class="update-title">更新ログ</div>
             <div class="update-entry">2026/09/20　【実装】ランキング（1か月・1週間・3日）</div>
+            <div class="update-entry">2026/09/20　【実装】Supabase共有ランキング接続設定（Project URL / Publishable key）</div>
             <div class="update-entry">2026/09/20　【実装】ランキング登録名の24文字制限</div>
             <div class="update-entry">2026/09/20　【実装】不適切な名前の検知と部分的な「ペプシコーラ」変換</div>
             <div class="update-entry">2026/09/20　【実装】@rikatech/text-profanity 1.1.6 を利用した日本語の不適切語検出・回避対策</div>
@@ -465,56 +466,65 @@ try{
 }catch(e){console.error("Initialization failed",e);}
 })();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 (() => {
     // ============================================================
-    // ランキング設定
-    // GitHub Pages + API を使う場合は、ここにAPIのURLを入れてください。
-    // 空欄ならブラウザのlocalStorageに保存します。
-    // API仕様を未導入の状態でもゲーム自体は動作します。
+    // 共有ランキング設定（Supabase）
+    // 1) Supabaseでプロジェクトを作成
+    // 2) 同梱の supabase_ranking.sql をSQL Editorで実行
+    // 3) 下の2項目に Project URL と Publishable key を貼る
+    //    ※ service_role key は絶対にここへ入れない
     // ============================================================
-    const RANKING_API_URL = "";
-    const RANKING_STORAGE_KEY = "honda_janken_ranking_v2";
+    // ↓↓↓ ここにSupabaseで取得した2つを貼り付ける ↓↓↓
+    const SUPABASE_URL = "https://eqjwlrofzynrdaajgemz.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_vg3aFPoYl9S-7H-Yq3cpgQ_6Xk_eQI2";
+    // ↑↑↑ service_role / secret key は絶対に入れない ↑↑↑
+    const RANKING_TABLE = "rankings";
+    const RANKING_STORAGE_KEY = "honda_janken_ranking_v3";
     const MAX_NAME_LENGTH = 24;
     const LIMIT = 100;
 
     const $ = id => document.getElementById(id);
+    const remoteEnabled = Boolean(
+        SUPABASE_URL &&
+        SUPABASE_PUBLISHABLE_KEY &&
+        window.supabase &&
+        typeof window.supabase.createClient === "function"
+    );
+    const db = remoteEnabled
+        ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+            auth: { persistSession: false, autoRefreshToken: false }
+        })
+        : null;
 
     // @rikatech/text-profanity を優先して利用します。
-    // GitHub PagesなどHTTPS上ではCDNから読み込み、file://などで読み込めない場合は
-    // 下の軽量フォールバック辞書を使用します。
     let profanityFilter = null;
     let profanityFilterReady = false;
-
     const FALLBACK_BAD_WORDS = [
         "死ね", "しね", "消えろ", "きえろ", "殺す", "ころす",
-        "馬鹿", "ばか", "阿呆", "あほ", "アホ",
-        "ゴミ", "ごみ", "クズ", "くず", "カス", "かす",
-        "糞", "くそ", "クソ", "うんこ", "ウンコ",
-        "きもい", "キモい", "キモイ", "きしょい", "キショい",
-        "fuck", "fucking", "shit", "bitch", "asshole", "damn"
+        "馬鹿", "ばか", "阿呆", "あほ", "アホ", "ゴミ", "ごみ",
+        "クズ", "くず", "カス", "かす", "糞", "くそ", "クソ",
+        "うんこ", "ウンコ", "きもい", "キモい", "キモイ", "きしょい",
+        "キショい", "fuck", "fucking", "shit", "bitch", "asshole", "damn"
     ];
 
     const profanityFilterPromise = (async () => {
         try {
             const mod = await import("https://esm.sh/@rikatech/text-profanity@1.1.6?bundle");
             if (mod && mod.WordFilter) {
-                profanityFilter = new mod.WordFilter({
-                    languages: ["ja", "en", "vi"],
-                    placeholder: "*"
-                });
+                profanityFilter = new mod.WordFilter({ languages: ["ja", "en", "vi"], placeholder: "*" });
                 profanityFilterReady = true;
-                return true;
+                return;
             }
         } catch (e) {
-            console.warn("@rikatech/text-profanity の読み込みに失敗したため、フォールバック辞書を使用します:", e);
+            console.warn("profanity filter load failed; fallback dictionary used", e);
         }
         profanityFilterReady = false;
-        return false;
     })();
 
-    // 判定前に NFKC 正規化し、句読点・記号・不可視の書式文字を除去します。
-    // 例：「マジでき、もい」→「マジできもい」→「マジでペプシコーラ」
+    // 句読点・記号などを一旦外してから判定。
+    // 例：マジでき、もい → マジできもい
     const stripCheckPunctuation = value => String(value ?? "")
         .normalize("NFKC")
         .replace(/[\p{P}\p{S}\p{Cf}]/gu, "");
@@ -524,7 +534,6 @@ try{
     const fallbackFilterBadWords = value => {
         let name = String(value ?? "").trim();
         if (!name) return { name: "名無し", filtered: false };
-
         let filtered = false;
         const sortedWords = [...FALLBACK_BAD_WORDS].sort((a, b) => b.length - a.length);
         for (const word of sortedWords) {
@@ -536,39 +545,27 @@ try{
                 name = name.replace(re, "ペプシコーラ");
             }
         }
-        return {
-            name: Array.from(name).slice(0, MAX_NAME_LENGTH).join(""),
-            filtered
-        };
+        return { name: Array.from(name).slice(0, MAX_NAME_LENGTH).join(""), filtered };
     };
 
     const filterBadWords = async value => {
         const normalized = stripCheckPunctuation(value).trim();
         const limited = Array.from(normalized).slice(0, MAX_NAME_LENGTH).join("");
         if (!limited) return { name: "名無し", filtered: false };
-
         await profanityFilterPromise;
-
         if (profanityFilterReady && profanityFilter) {
             try {
-                // ライブラリ側で日本語の表記ゆれ・回避も含めて判定。
-                // mask() は悪い部分だけを * にするので、* の連続部分だけペプシコーラに置換します。
                 const masked = profanityFilter.mask(limited);
-                const filtered = masked !== limited;
                 return {
                     name: Array.from(maskToPepsi(masked)).slice(0, MAX_NAME_LENGTH).join(""),
-                    filtered
+                    filtered: masked !== limited
                 };
             } catch (e) {
-                console.warn("@rikatech/text-profanity の判定に失敗したため、フォールバック辞書を使用します:", e);
+                console.warn("profanity filter failed; fallback dictionary used", e);
             }
         }
-
         return fallbackFilterBadWords(limited);
     };
-
-    const normalizeName = async value => (await filterBadWords(value)).name;
-
 
     const getLocalRanking = () => {
         try {
@@ -593,30 +590,43 @@ try{
         week: 7 * 24 * 60 * 60 * 1000,
         "3day": 3 * 24 * 60 * 60 * 1000
     };
-
-    const periodLabel = {
-        month: "1か月",
-        week: "1週間",
-        "3day": "3日"
-    };
+    const periodLabel = { month: "1か月", week: "1週間", "3day": "3日" };
 
     const getScore = () => {
         const el = $("score");
         const value = el ? Number.parseInt(el.textContent.replace(/[^0-9-]/g, ""), 10) : 0;
         return Number.isFinite(value) ? value : 0;
     };
-
     const getMode = () => {
         const el = $("resultMode");
         return el && el.textContent.trim() ? el.textContent.trim() : "通常";
     };
 
-    const getPeriodEntries = period => {
+    const localEntries = period => {
         const cutoff = Date.now() - (periodMs[period] || periodMs.month);
         return getLocalRanking()
             .filter(x => Number(x.time) >= cutoff)
             .sort((a, b) => (Number(b.score) - Number(a.score)) || (Number(a.time) - Number(b.time)))
             .slice(0, 50);
+    };
+
+    const remoteEntries = async period => {
+        if (!remoteEnabled) return null;
+        const cutoff = new Date(Date.now() - (periodMs[period] || periodMs.month)).toISOString();
+        const { data, error } = await db
+            .from(RANKING_TABLE)
+            .select("name,score,mode,created_at")
+            .gte("created_at", cutoff)
+            .order("score", { ascending: false })
+            .order("created_at", { ascending: true })
+            .limit(50);
+        if (error) throw error;
+        return (data || []).map(x => ({
+            name: String(x.name ?? "名無し"),
+            score: Number(x.score) || 0,
+            mode: String(x.mode ?? "通常"),
+            time: Date.parse(x.created_at) || Date.now()
+        }));
     };
 
     const renderRanking = async period => {
@@ -625,37 +635,24 @@ try{
         list.innerHTML = '<div class="ranking-empty">読み込み中...</div>';
 
         let entries = null;
-        let usingLocal = true;
-
-        if (RANKING_API_URL) {
+        let usingRemote = false;
+        if (remoteEnabled) {
             try {
-                const url = new URL(RANKING_API_URL, location.href);
-                url.searchParams.set("period", period);
-                const response = await fetch(url.toString(), {
-                    method: "GET",
-                    headers: { "Accept": "application/json" },
-                    cache: "no-store"
-                });
-                if (!response.ok) throw new Error("ranking http " + response.status);
-                const json = await response.json();
-                entries = Array.isArray(json) ? json : (Array.isArray(json.ranking) ? json.ranking : []);
-                usingLocal = false;
+                entries = await remoteEntries(period);
+                usingRemote = true;
             } catch (e) {
-                console.warn("ランキングAPIを利用できないためローカルランキングに切り替えます:", e);
+                console.error("共有ランキングの取得に失敗:", e);
+                entries = null;
             }
         }
+        if (entries === null) entries = localEntries(period);
 
-        if (entries === null) entries = getPeriodEntries(period);
-
-        entries = entries
-            .map(x => ({
-                name: String(x.name ?? "名無し"),
-                score: Number(x.score) || 0,
-                mode: String(x.mode ?? "通常"),
-                time: Number(x.time) || Date.now()
-            }))
-            .sort((a, b) => (b.score - a.score) || (a.time - b.time))
-            .slice(0, 50);
+        entries = entries.map(x => ({
+            name: String(x.name ?? "名無し"),
+            score: Number(x.score) || 0,
+            mode: String(x.mode ?? "通常"),
+            time: Number(x.time) || Date.now()
+        }));
 
         if (!entries.length) {
             list.innerHTML = '<div class="ranking-empty">この期間の記録はありません。</div>';
@@ -664,23 +661,18 @@ try{
             entries.forEach((entry, i) => {
                 const row = document.createElement("div");
                 row.className = "ranking-row";
-
                 const rank = document.createElement("span");
                 rank.className = "ranking-rank";
                 rank.textContent = `${i + 1}.`;
-
                 const name = document.createElement("span");
                 name.className = "ranking-name";
-                name.textContent = entry.name.slice(0, MAX_NAME_LENGTH);
-
+                name.textContent = Array.from(entry.name).slice(0, MAX_NAME_LENGTH).join("");
                 const mode = document.createElement("span");
                 mode.className = "ranking-mode";
                 mode.textContent = entry.mode;
-
                 const score = document.createElement("span");
                 score.className = "ranking-score";
                 score.textContent = `${entry.score} pt`;
-
                 row.append(rank, name, mode, score);
                 fragment.appendChild(row);
             });
@@ -689,9 +681,11 @@ try{
 
         const message = $("rankingMessage");
         if (message) {
-            message.textContent = usingLocal
-                ? `現在はこのブラウザ内のランキングです（${periodLabel[period] || "1か月"}）。`
-                : `${periodLabel[period] || "1か月"}ランキングを表示中。`;
+            message.textContent = usingRemote
+                ? `全ユーザー共有の${periodLabel[period] || "1か月"}ランキング`
+                : (remoteEnabled
+                    ? "共有ランキングに接続できないため、このブラウザのランキングを表示中"
+                    : "共有設定が未入力のため、このブラウザのランキングを表示中");
         }
     };
 
@@ -702,79 +696,65 @@ try{
         const active = document.querySelector(".rank-tab.active");
         renderRanking(active ? active.dataset.period : "month");
     };
-
-    const closeRanking = () => {
-        $("ranking").classList.add("hidden");
-    };
+    const closeRanking = () => $("ranking").classList.add("hidden");
 
     const registerRanking = async () => {
         const input = $("rankingName");
         const message = $("rankingMessage");
-        const rawName = String(input.value ?? "");
-        const filteredResult = await filterBadWords(rawName);
-        const wasFiltered = filteredResult.filtered;
-        const name = filteredResult.name;
-        const score = getScore();
-        const mode = getMode();
-        const item = { name, score, mode, time: Date.now() };
+        const filteredResult = await filterBadWords(input.value);
+        const item = {
+            name: filteredResult.name,
+            score: getScore(),
+            mode: getMode(),
+            time: Date.now()
+        };
+        input.value = item.name;
 
-        input.value = name.slice(0, MAX_NAME_LENGTH);
-
-        if (RANKING_API_URL) {
+        // 共有ランキング
+        if (remoteEnabled) {
             try {
-                const response = await fetch(RANKING_API_URL, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
-                    body: JSON.stringify(item)
+                const { error } = await db.from(RANKING_TABLE).insert({
+                    name: item.name,
+                    score: item.score,
+                    mode: item.mode
                 });
-                if (!response.ok) throw new Error("ranking http " + response.status);
-                message.textContent = wasFiltered
-                    ? "不適切な名前のため「ペプシコーラ」に変更して登録しました。"
-                    : "ランキングに登録しました。";
+                if (error) throw error;
+                message.textContent = filteredResult.filtered
+                    ? "不適切な名前のため「ペプシコーラ」に変更して共有ランキングへ登録しました。"
+                    : "共有ランキングへ登録しました。";
+                await renderRanking("month");
+                return;
             } catch (e) {
-                console.warn("ランキングAPIへの登録に失敗したためローカル保存します:", e);
-                const data = getLocalRanking();
-                data.push(item);
-                setLocalRanking(data);
-                message.textContent = "サーバーに接続できないため、このブラウザに保存しました。";
+                console.error("共有ランキングへの登録に失敗:", e);
             }
-        } else {
-            const data = getLocalRanking();
-            data.push(item);
-            setLocalRanking(data);
-            message.textContent = wasFiltered
-                ? "不適切な名前のため「ペプシコーラ」に変更して登録しました。"
-                : "ランキングに登録しました。";
         }
 
-        renderRanking("month");
+        // API設定前/通信失敗時のローカル保存
+        const data = getLocalRanking();
+        data.push(item);
+        setLocalRanking(data);
+        message.textContent = filteredResult.filtered
+            ? "共有サーバーへ接続できないため、名前を変換してこのブラウザに保存しました。"
+            : "共有サーバーへ接続できないため、このブラウザに保存しました。";
+        await renderRanking("month");
     };
 
-    // グローバル化。元の暗号化ゲーム本体とは独立して動かす。
     window.openRanking = openRanking;
     window.closeRanking = closeRanking;
     window.registerRanking = registerRanking;
     window.renderRanking = renderRanking;
 
-    $("openRankingButton").addEventListener("click", openRanking);
-    $("registerRankingButton").addEventListener("click", openRanking);
-    $("submitRankingButton").addEventListener("click", registerRanking);
-    $("rankingName").addEventListener("input", () => {
-        const chars = Array.from($("rankingName").value);
-        if (chars.length > MAX_NAME_LENGTH) {
-            $("rankingName").value = chars.slice(0, MAX_NAME_LENGTH).join("");
-        }
+    $("openRankingButton")?.addEventListener("click", openRanking);
+    $("registerRankingButton")?.addEventListener("click", openRanking);
+    $("submitRankingButton")?.addEventListener("click", registerRanking);
+    $("rankingCloseButton")?.addEventListener("click", closeRanking);
+    document.querySelectorAll(".rank-tab").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".rank-tab").forEach(x => x.classList.remove("active"));
+            btn.classList.add("active");
+            renderRanking(btn.dataset.period);
+        });
     });
-    $("rankingName").addEventListener("keydown", e => {
-        if (e.key === "Enter") registerRanking();
-    });
-    $("rankingCloseButton").addEventListener("click", closeRanking);
-
-    document.querySelectorAll(".rank-tab").forEach(btn => btn.addEventListener("click", () => {
-        document.querySelectorAll(".rank-tab").forEach(x => x.classList.remove("active"));
-        btn.classList.add("active");
-        renderRanking(btn.dataset.period);
-    }));
 })();
 </script>
 
