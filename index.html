@@ -154,30 +154,6 @@ html, body {
     width: min(620px, 92vw);
     text-align: center;
 }
-.mode-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 14px;
-}
-.mode-button {
-    border: 1px solid #ccc;
-    background: #fff;
-    color: #111;
-    border-radius: 6px;
-    padding: 7px 16px;
-    font-size: 15px;
-    cursor: pointer;
-}
-.mode-button.selected {
-    background: #111;
-    color: #fff;
-}
-.mode-description {
-    margin-top: 7px;
-    color: #aaa;
-    font-size: 12px;
-}
 .update-log {
     margin: 24px auto 0;
     width: min(500px, 88vw);
@@ -226,21 +202,16 @@ html, body {
 .rank-tab { flex:1; border:1px solid #555; background:#222; color:#ddd; padding:9px; border-radius:5px; cursor:pointer; }
 .rank-tab.active { background:#fff; color:#111; }
 #rankingList { min-height: 100px; }
-.rank-row { display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; padding:9px 5px; border-bottom:1px solid #292929; }
-.rank-row span { color:#aaa; }
-.rank-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.rank-row em { font-style:normal; color:#ccc; }
+.ranking-row { display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; padding:9px 5px; border-bottom:1px solid #292929; }
+.ranking-row span { color:#aaa; }
+.ranking-row .ranking-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ranking-row .ranking-mode { font-style:normal; color:#ccc; }
 .rank-loading,.rank-empty { text-align:center; color:#888; padding:30px 0; }
 .ranking-register { margin-top:16px; border-top:1px solid #333; padding-top:15px; }
 .ranking-register input { width:calc(100% - 90px); padding:10px; border:1px solid #555; border-radius:5px; background:#222; color:#fff; font-size:16px; }
 .ranking-register button { width:76px; padding:10px 4px; margin-left:6px; border:0; border-radius:5px; cursor:pointer; }
 #rankingMessage { color:#aaa; font-size:12px; min-height:18px; margin-top:6px; }
 .ranking-close { width:100%; margin-top:15px; padding:11px; border:0; border-radius:5px; cursor:pointer; }
-@media (max-width:600px) {
-    .mode-buttons { gap:5px; }
-    .mode-button { padding:7px 11px; }
-    .stats-actions button { width:100%; max-width:260px; }
-}
 
 .hidden {
     display: none !important;
@@ -381,16 +352,20 @@ html, body {
 <div id="start">
     <div class="start-panel">
         <button id="startButton">START</button>
-        <div class="mode-buttons">
-            <button class="mode-button selected" data-mode="normal">通常</button>
-            <button class="mode-button" data-mode="sanma">さんま</button>
-            <button class="mode-button" data-mode="gobou">ごぼう</button>
-        </div>
-        <div class="mode-description" id="modeDescription">通常：1回勝負。</div>
+
+        <!-- =========================================
+             更新ログ
+             この部分はHTMLを直接編集して自由に更新できます。
+             「実装したもの」「削除したもの」を毎回ここへ追記します。
+        ========================================= -->
         <div class="update-log">
             <div class="update-title">更新ログ</div>
-            <div class="update-entry">2026/09/20　ランキング・さんま/ごぼうモードを追加</div>
-            <!-- ここに更新内容を自由に追加できます -->
+            <div class="update-entry">2026/09/20　【実装】ランキング（1か月・1週間・3日）</div>
+            <div class="update-entry">2026/09/20　【実装】ランキング登録名の24文字制限</div>
+            <div class="update-entry">2026/09/20　【実装】不適切な名前の検知と部分的な「ペプシコーラ」変換</div>
+            <div class="update-entry">2026/09/20　【実装】@rikatech/text-profanity 1.1.6 を利用した日本語の不適切語検出・回避対策</div>
+            <div class="update-entry">2026/09/20　【削除】「さんま」「ごぼう」モード</div>
+            <!-- ここに新しい更新内容を自由に追加してください -->
         </div>
     </div>
 </div>
@@ -464,22 +439,8 @@ html, body {
 </div>
 
 <script>
-(() => {
-    const descriptions = {
-        normal: "通常：1回勝負。",
-        sanma: "さんま：3回勝負。勝敗を合計して記録します。",
-        gobou: "ごぼう：5回勝負。勝敗を合計して記録します。"
-    };
-    window.selectedMode = "normal";
-    document.querySelectorAll(".mode-button").forEach(btn => {
-        btn.addEventListener("click", () => {
-            document.querySelectorAll(".mode-button").forEach(x => x.classList.remove("selected"));
-            btn.classList.add("selected");
-            window.selectedMode = btn.dataset.mode;
-            document.getElementById("modeDescription").textContent = descriptions[btn.dataset.mode];
-        });
-    });
-})();
+// STARTのみの通常モードを維持するための互換用設定。
+window.selectedMode = "normal";
 </script>
 
 <script>
@@ -519,27 +480,95 @@ try{
 
     const $ = id => document.getElementById(id);
 
-    // よく使われる暴言・侮辱語などを名前から除外。
-    // 完全な辞書ではないため、必要ならここへ自由に追加できます。
-    const BAD_WORDS = [
+    // @rikatech/text-profanity を優先して利用します。
+    // GitHub PagesなどHTTPS上ではCDNから読み込み、file://などで読み込めない場合は
+    // 下の軽量フォールバック辞書を使用します。
+    let profanityFilter = null;
+    let profanityFilterReady = false;
+
+    const FALLBACK_BAD_WORDS = [
         "死ね", "しね", "消えろ", "きえろ", "殺す", "ころす",
-        "馬鹿", "ばか", "バカ", "阿呆", "あほ", "アホ",
+        "馬鹿", "ばか", "阿呆", "あほ", "アホ",
         "ゴミ", "ごみ", "クズ", "くず", "カス", "かす",
         "糞", "くそ", "クソ", "うんこ", "ウンコ",
+        "きもい", "キモい", "キモイ", "きしょい", "キショい",
         "fuck", "fucking", "shit", "bitch", "asshole", "damn"
     ];
 
-    const normalizeName = value => {
-        let name = String(value ?? "").normalize("NFKC").trim();
-        name = Array.from(name).slice(0, MAX_NAME_LENGTH).join("");
-        if (!name) return "名無し";
-
-        const lower = name.toLocaleLowerCase("en-US");
-        if (BAD_WORDS.some(word => lower.includes(word.toLocaleLowerCase("en-US")))) {
-            return "ペプシコーラ";
+    const profanityFilterPromise = (async () => {
+        try {
+            const mod = await import("https://esm.sh/@rikatech/text-profanity@1.1.6?bundle");
+            if (mod && mod.WordFilter) {
+                profanityFilter = new mod.WordFilter({
+                    languages: ["ja", "en", "vi"],
+                    placeholder: "*"
+                });
+                profanityFilterReady = true;
+                return true;
+            }
+        } catch (e) {
+            console.warn("@rikatech/text-profanity の読み込みに失敗したため、フォールバック辞書を使用します:", e);
         }
-        return name;
+        profanityFilterReady = false;
+        return false;
+    })();
+
+    // 判定前に NFKC 正規化し、句読点・記号・不可視の書式文字を除去します。
+    // 例：「マジでき、もい」→「マジできもい」→「マジでペプシコーラ」
+    const stripCheckPunctuation = value => String(value ?? "")
+        .normalize("NFKC")
+        .replace(/[\p{P}\p{S}\p{Cf}]/gu, "");
+
+    const maskToPepsi = masked => String(masked).replace(/\*+/g, "ペプシコーラ");
+
+    const fallbackFilterBadWords = value => {
+        let name = String(value ?? "").trim();
+        if (!name) return { name: "名無し", filtered: false };
+
+        let filtered = false;
+        const sortedWords = [...FALLBACK_BAD_WORDS].sort((a, b) => b.length - a.length);
+        for (const word of sortedWords) {
+            const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const flags = /[A-Za-z]/.test(word) ? "gi" : "g";
+            const re = new RegExp(escaped, flags);
+            if (re.test(name)) {
+                filtered = true;
+                name = name.replace(re, "ペプシコーラ");
+            }
+        }
+        return {
+            name: Array.from(name).slice(0, MAX_NAME_LENGTH).join(""),
+            filtered
+        };
     };
+
+    const filterBadWords = async value => {
+        const normalized = stripCheckPunctuation(value).trim();
+        const limited = Array.from(normalized).slice(0, MAX_NAME_LENGTH).join("");
+        if (!limited) return { name: "名無し", filtered: false };
+
+        await profanityFilterPromise;
+
+        if (profanityFilterReady && profanityFilter) {
+            try {
+                // ライブラリ側で日本語の表記ゆれ・回避も含めて判定。
+                // mask() は悪い部分だけを * にするので、* の連続部分だけペプシコーラに置換します。
+                const masked = profanityFilter.mask(limited);
+                const filtered = masked !== limited;
+                return {
+                    name: Array.from(maskToPepsi(masked)).slice(0, MAX_NAME_LENGTH).join(""),
+                    filtered
+                };
+            } catch (e) {
+                console.warn("@rikatech/text-profanity の判定に失敗したため、フォールバック辞書を使用します:", e);
+            }
+        }
+
+        return fallbackFilterBadWords(limited);
+    };
+
+    const normalizeName = async value => (await filterBadWords(value)).name;
+
 
     const getLocalRanking = () => {
         try {
@@ -681,11 +710,10 @@ try{
     const registerRanking = async () => {
         const input = $("rankingName");
         const message = $("rankingMessage");
-        const rawName = String(input.value ?? "").normalize("NFKC").trim();
-        const wasFiltered = BAD_WORDS.some(word =>
-            rawName.toLocaleLowerCase("en-US").includes(word.toLocaleLowerCase("en-US"))
-        );
-        const name = normalizeName(rawName);
+        const rawName = String(input.value ?? "");
+        const filteredResult = await filterBadWords(rawName);
+        const wasFiltered = filteredResult.filtered;
+        const name = filteredResult.name;
         const score = getScore();
         const mode = getMode();
         const item = { name, score, mode, time: Date.now() };
