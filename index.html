@@ -148,6 +148,100 @@ html, body {
     cursor: pointer;
 }
 
+
+/* ===== 追加UI ===== */
+.start-panel {
+    width: min(620px, 92vw);
+    text-align: center;
+}
+.mode-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 14px;
+}
+.mode-button {
+    border: 1px solid #ccc;
+    background: #fff;
+    color: #111;
+    border-radius: 6px;
+    padding: 7px 16px;
+    font-size: 15px;
+    cursor: pointer;
+}
+.mode-button.selected {
+    background: #111;
+    color: #fff;
+}
+.mode-description {
+    margin-top: 7px;
+    color: #aaa;
+    font-size: 12px;
+}
+.update-log {
+    margin: 24px auto 0;
+    width: min(500px, 88vw);
+    text-align: left;
+    color: #999;
+    font-size: 11px;
+    border-top: 1px solid #333;
+    padding-top: 10px;
+}
+.update-title {
+    color: #ddd;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+.small-stat { font-size: 17px; opacity: .85; }
+.stats-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 25px;
+}
+.stats-actions button { margin-top: 0 !important; }
+#ranking {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    background: rgba(0,0,0,.92);
+    color: #fff;
+}
+.ranking-card {
+    width: min(560px, 94vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #111;
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 22px;
+}
+.ranking-card h2 { margin: 0 0 16px; font-size: 30px; text-align:center; }
+.rank-tabs { display:flex; gap:6px; margin-bottom:12px; }
+.rank-tab { flex:1; border:1px solid #555; background:#222; color:#ddd; padding:9px; border-radius:5px; cursor:pointer; }
+.rank-tab.active { background:#fff; color:#111; }
+#rankingList { min-height: 100px; }
+.rank-row { display:grid; grid-template-columns:42px 1fr auto; gap:10px; align-items:center; padding:9px 5px; border-bottom:1px solid #292929; }
+.rank-row span { color:#aaa; }
+.rank-row b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rank-row em { font-style:normal; color:#ccc; }
+.rank-loading,.rank-empty { text-align:center; color:#888; padding:30px 0; }
+.ranking-register { margin-top:16px; border-top:1px solid #333; padding-top:15px; }
+.ranking-register input { width:calc(100% - 90px); padding:10px; border:1px solid #555; border-radius:5px; background:#222; color:#fff; font-size:16px; }
+.ranking-register button { width:76px; padding:10px 4px; margin-left:6px; border:0; border-radius:5px; cursor:pointer; }
+#rankingMessage { color:#aaa; font-size:12px; min-height:18px; margin-top:6px; }
+.ranking-close { width:100%; margin-top:15px; padding:11px; border:0; border-radius:5px; cursor:pointer; }
+@media (max-width:600px) {
+    .mode-buttons { gap:5px; }
+    .mode-button { padding:7px 11px; }
+    .stats-actions button { width:100%; max-width:260px; }
+}
+
 .hidden {
     display: none !important;
 }
@@ -285,7 +379,20 @@ html, body {
 
 <!-- START -->
 <div id="start">
-    <button id="startButton">START</button>
+    <div class="start-panel">
+        <button id="startButton">START</button>
+        <div class="mode-buttons">
+            <button class="mode-button selected" data-mode="normal">通常</button>
+            <button class="mode-button" data-mode="sanma">さんま</button>
+            <button class="mode-button" data-mode="gobou">ごぼう</button>
+        </div>
+        <div class="mode-description" id="modeDescription">通常：1回勝負。</div>
+        <div class="update-log">
+            <div class="update-title">更新ログ</div>
+            <div class="update-entry">2026/09/20　ランキング・さんま/ごぼうモードを追加</div>
+            <!-- ここに更新内容を自由に追加できます -->
+        </div>
+    </div>
 </div>
 
 
@@ -325,15 +432,59 @@ html, body {
         最大連続あいこ：
         <span id="drawRecord">0</span>回
     </div>
+    <div class="stat small-stat">
+        スコア：<span id="score">0</span> pt　/　モード：<span id="resultMode">通常</span>
+    </div>
 
-    <button id="statsCloseButton">閉じる</button>
+    <div class="stats-actions">
+        <button id="openRankingButton">ランキングを見る</button>
+        <button id="registerRankingButton">ランキングに登録</button>
+        <button id="statsCloseButton">閉じる</button>
+    </div>
 
 </div>
 
+<!-- ランキング -->
+<div id="ranking" class="hidden">
+    <div class="ranking-card">
+        <h2>ランキング</h2>
+        <div class="rank-tabs">
+            <button class="rank-tab active" data-period="month">1か月</button>
+            <button class="rank-tab" data-period="week">1週間</button>
+            <button class="rank-tab" data-period="3day">3日</button>
+        </div>
+        <div id="rankingList"></div>
+        <div class="ranking-register">
+            <input id="rankingName" type="text" maxlength="24" placeholder="名前（24文字まで）">
+            <button id="submitRankingButton">登録</button>
+            <div id="rankingMessage"></div>
+        </div>
+        <button id="rankingCloseButton" class="ranking-close">戻る</button>
+    </div>
+</div>
+
+<script>
+(() => {
+    const descriptions = {
+        normal: "通常：1回勝負。",
+        sanma: "さんま：3回勝負。勝敗を合計して記録します。",
+        gobou: "ごぼう：5回勝負。勝敗を合計して記録します。"
+    };
+    window.selectedMode = "normal";
+    document.querySelectorAll(".mode-button").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".mode-button").forEach(x => x.classList.remove("selected"));
+            btn.classList.add("selected");
+            window.selectedMode = btn.dataset.mode;
+            document.getElementById("modeDescription").textContent = descriptions[btn.dataset.mode];
+        });
+    });
+})();
+</script>
 
 <script>
 (async()=>{
-const X=["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"],O=[10, 6, 5, 0, 3, 8, 4, 2, 9, 7, 1],Y=[];O.forEach((i,j)=>Y[i]=X[j]);const Q=Y.join(""),S="L1MC77MdhtW0no5bPs7Tyg==",V="uBR0ob+gw6rX7fC+",I=260000,H="efa5d16c3c2b3c927d62aa85fa2a420a0da8abc774f7aa69b0bb8fa8591b5760",G=167,P=[[99,34,2,167,50,203,195,59,179],[198,157,113,43,128,246,222,195,186,2,193],[28,35,242,36,42,48,71],[129,86,99,232,230,110,184,170,13,252,48,137,145]]; 
+const X=["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"],O=[10, 6, 5, 0, 3, 8, 4, 2, 9, 7, 1],Y=[];O.forEach((i,j)=>Y[i]=X[j]);const Q="AkExHy84QYjBp21BdGO+2nmBCV5esXg1DrpXpRp8nkEU57NPFUR6QlyNSZTz1X8EqBpYhNTyrqjCTTTyhhkEdVP+REpExenY27n184snuyR6wdWGWrqondAA6u63WLYGzhr6cH2DtljyoM1Dxf1wDKP+S/1D5syeChcw1DW+XzqIe/qckE33eCw3uN5Zngmca+kW9uNvi7xvS7dGWskARaVTXk9+qD4/vlYGqYYl5h3uvQEqLr2vwbYZvWDYzigWYKm/pufiTetVZXvm5Jd1yqT8U/1CULrHjkobuTJqM5LM/+6SP2mnc9JTE6cZInmRuKJNvN6hKQC+yaCnk8zEqjXXWAr5aee7GR3VNy7z4pYPryFMeLoZ35790DtzkdvSvttnBuWsOPXPPgr1liLsGVpcVxFt/9v/LqEZBOK9k76okJNnBRWjz1a33LQBGhrMkpBHy/BxrJwuSMgoCW0eh9nf7o7qb5UnaUBXDwwTKBdOPL7H5H0ovplNCXQkx+tqANf/gvE4QlbtqVSA2gZYAq/dp2sTsNNiojJHoD7kTm1rDbUS+cPIs5cuoWlWXW6fkBFwUIT2ucMoE2qFY3VfutJzFU2jeZp8VsydEM2Ic/h5P9TSnA6HJHMz5o7jXSU6GDZmewxIf9hXrM69/E51JbXLtvH+Xz/dkK6zWUxtjY1IBxYR7yKXvqgUd93vynX2I3t85Kcv5kb0TRS62y2WeYZ0pLnlZvmhAo4Flrn9Azj0HK9juM2tGPpAihqmLZBGcl5n+YNOPwRPs8eNotCHNqL45JyHMNRo5SycK9rlLFARm9feVoePpbULIzEJnjGx/mhQCy1sBmt0htvOI0bgtztozkHxqrGBMIjDGEvjdkdaedvbloSBNbLqkbhzbZIw6ONhp8avPk/LGVBn50sFSxrog7mgzy/f9GxEZ3oGwqvTfuC8aH2odU4PykXNXa1vZG8I2MIWLYWIKLCu2jKH08vubFvoo5pVBplWMU5oopH12maRiHsW+mhJiNh5w031iy4ob6OKEiQFLfAHDk6znAzfqqHfzW8Fkn6LIe7nAC5LzpNIS5WGVsR4qTBAkKdSCx3UeNsMnHgWE4Z3pIs7KLs8b8tDLoq9ul342yn+MVOF54PwRJKQe7MuiW0x8XqhSmmchFE7LfECDIW8Q0DY7EplXfxpFhzhnZNugqigDOQWJkz3u7bx5euOv0eDdozNYqvEsc7GlJQdGdW25DRHuBCFiFtFlyad1Rw8DD1/cU8ICIbQAQbsan9zdr1Gnmr7o3maTSgVg5vaK8oh8EvQpXgR/vnlyZLsYf8mn6UjORjcRKercTYv+yYc3l6jskO2xbLzFSTD8xZPgE4KcwoDchSbtIXmxPVZhbpcL1x3jvVR+0Ceq4fhma9jSEh06z9Ze/vqzR6sTFqLdw3CgldyOdTF3ww6Wy+MiXIBNYs3W7yVJ7IsMha9AtcxLh/modJxUwHlHsKZXx7zQmyeYHS+kGg5sjuIQdlZ/fydw7EJWUPvcdL2I8Jqqn58nzxSLpF9KtUt5m/dsm/QunE0q/Dnco/HQRXo+649ZuVIHQ0KPF7VuPPAjXyPfbQcrATTu5kZJWJzje3GwmaXo0qk/Y4x56LVY9Af8V1WVSujhVxVcq8l5E82rkszFLuhUTSk51/CVMmhW9F/IBUQFh8P41ql5UQllo3jEmDQAJoOcxAiug/4Z7kqkewwcWvUNE3d9jUcMiDHNX7++LzdtSPoFfnJ8iQDLBpWxtSGnYCVwDwreYFZLTO7yVzl06gJVj/uDKoUarFy5NVA34n1COPidDpOU14wkC9zzxC/sL5xzduH9A3H8aiqXo2FN4/6RTN7yqimEC1DvZGcc85j8u+/HNx8/QI/MeXhsy05zObfMg2ljPOqZ/ukcfnE6GKiZeRuNVKz+NmnqhvZbbv8mYbKnWAKok93n+B1IXLUd3MVapcm1YGFluzZL9h47u2HSjt0uyhVk604evKCpfa3QMlSH7rKHFoEd9+qxq71jDbzJYER2eVnL1U/LigQtmV4QgVBsUj5d+ShV42KwiMYdRa3G54aCImduSRuJgyaxb9WIc8NH3WqYYLyDmwg5fpbhsxMhWZBo2cStyZpCtdFbZnLbtsU9G0EZOQ50dNZESyCgQXDv9I91AkqZTuBakanjodnzjA7U1Ue+/bGAZ4t9ADYPQsLOSxlcI8rP+sL6Eoatizyl6UyThqVyUqWVUrYUzulCziYfZABmedEoMaP51NzAHRdT6rkCbnIK3bX4fnOGr9ruNvV0exsMxQxH8ySlr+TGJCOi1nRVLn/uAMaiode0XvJiJA+0cjnMDB+j1g+7etPivpR3EH4Npe89Bn6jdsYVGtYUWQQQoyIIH8BzboDe6XvOCkT4XyRI+W/SYIk+Z/1j9omLPAGxNxAKj3ucgWOGSwE6228qFCqYKGPoDnBc8t695yFyGOYiFlj/Ci4ppjxhHbUyWMNDdrpiTJ3YfeCoAv/4U/f1Z9MIY/P2BFG3ixBSOV3Pf82AcR6HD14iSZVrNmf0v4os9h1x/ZQDncrzJ7aG1W919lkv5CWMX7cgtHOV2xnfJy3WPdcTTdi4MAh7gk9M4amqA0xpI5siAl7/JpUaukCLHNrLyvw62+L0/8ahOXN0tC7KsUynLBBvmSioMsoAvYMFZddaxB2tL9hln81fK3gjfERAVPTYffeNIais/rUVyuPzRh2USuImTYLPHtNbwIhS1utWRHHXh8+mdf5e6p0dhF3EJ+vADFwpTJB6FerQJHDmvb5Ksn3ArflSPCLgHKDo1RDur4H362fsuUeqnUnwD5jh1f1qIkdlf8W7qdzqeOg4YZa2K30t61KsbDCqi/60ddevDC/j80LCOMx9Ev9R1SelNrlkqhiiS9R25B1y5DArRJBKbCzA66NUp64iMfpcgjtS+Fg8X4E0z/mzmIGUbXy2dQ5zhSIQ5kdm8PJSPSbP91s2cPSJKlVH/aCaVMCZbGSIMrSI/vA6WTOAuG8n9VbyxQiziRdHOyVLiZdcngYbR16OO6DobddVK28Pnky6FOn1bcYDDa4XF0r9bbHi5g+GBWySmzA3koEZif3ewp2aJvCY/NbE4w3kQiUowWQP9IypFP51DQsMw0Yo7jVfO2Su+yOKFAlP/Hu4cegED5hMwn4U/PatIqWwq/M0xhGIrCotdmV/R/QU8iJ0U+iM1X8r60KHqPuhvmQycG0p7MkQRiWmztb301X1YHXYOoLkkFJhffXGviq6q96U8wGsqxhNps78FmrHsat1GD/H7zMyIK64d6/9OBVLbhX+P8IixTfuP23Oz71enN/E0LD6nWOoi58JObgleV10Jlaz3JM9WoBNYNRyvxpF6Sv2w8L4uNbQucuRZrLh4JOkJ47k2CNpBbwyZqqfuzyvxI7UyKErjrkhQNsj4Ukmt6KdkEhWRlMs/eKuM4v7y/d0hQ3I+l5BNT7XTYvvOyBeY5QCtRU3rSMy1LIYVm9xZhDCaL4uYoXfjSjSdLhiQY6zeXrZILpjUKJI8SMg9TmUoZj0btz+n707EPctERe1aQeuFYmEBe6nBNHF9cTWySSgBRwQtEACoHwECMkVZ1GkRgPI0aa8FBImz+Qs1rAolWh1d5O6q3wNx0fHLWEMSY+1F1FrhdtljuTNO6f2OGi2OWAHPqslABLBsO68soFzXThqT+uP3spj8KV09RGtbE+wPh5UuUM7YBBQA4U3Nkpkb3k4NE5spM79psFT0uXZuF+XDn+Af1ggf9gadSeF8Dq+1L47qFfOYNFeXn61aqye9sSb0q59kYUDpOhywffaCJ3140/hLg66E+DHLgr1fWejY+jLSs32CS2BJzIbeURB2jIHb38ue/yGlrByzQKd5VY1FlFCIfslL+UY3qeldTFL3RRQIjbVk5u+ju8dTWGnLtwDHOwbsAvEM2w+vDMls/QVvIpD2kMVwDlNpj1z8QoPZ3/6cL/6u1Eu/isc14v+fv9Qi2Qo4wCHWuHJeg8zeqi+CNXTJGuXuZ4qtUHzraUmipBgK/3jDjhEmeEJkRrbvOKj/nHsq7uLtm5MA8xNCrYoTdBPffEcGuYT6PqUGV7LLQqIAmaH3r65zntm/om5U2etxKUynCROypbVZ2X2VuOW0JPcUWVV+mba2/TbVYRbJ1Hldk3dX5FkOJbgZJz0flJXORWaoNU7cvlS6Q1mbFSB41rP0af9jYGZkwGVxtoqTAFdjHz1Al4DS1cjmNcMMMw06Rw4YI0rkEZJ9gqwKPDf2G2egjkVn5AQ87ZsCgSnf4wIGqgVLg260lBI2qk8TsBsJR6ibq4QMq+2qwa7ZuI8sSOGC+4JjE1c2v8kddV3JqKELp0buYgpKNoyaoD6EjEdpDXjPpG1zU0JaNRO0M=",S="L1MC77MdhtW0no5bPs7Tyg==",V="uBR0ob+gw6rX7fC+",I=260000,H="5117b7a06f9c1cd98a0659bd128c3ad46ce5b790d7b6ba375a4b9dd77c8edfc4",G=167,P=[[99,34,2,167,50,203,195,59,179],[198,157,113,43,128,246,222,195,186,2,193],[28,35,242,36,42,48,71],[129,86,99,232,230,110,184,170,13,252,48,137,145]]; 
 try{
  const z=(u)=>Uint8Array.from(atob(u),c=>c.charCodeAt(0));
  const hx=(u)=>Array.from(new Uint8Array(u),x=>x.toString(16).padStart(2,"0")).join("");
@@ -353,8 +504,262 @@ try{
 }catch(e){console.error("Initialization failed",e);}
 })();
 </script>
-<script data-goatcounter="https://al1scut.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+<script>
+(() => {
+    // ============================================================
+    // ランキング設定
+    // GitHub Pages + API を使う場合は、ここにAPIのURLを入れてください。
+    // 空欄ならブラウザのlocalStorageに保存します。
+    // API仕様を未導入の状態でもゲーム自体は動作します。
+    // ============================================================
+    const RANKING_API_URL = "";
+    const RANKING_STORAGE_KEY = "honda_janken_ranking_v2";
+    const MAX_NAME_LENGTH = 24;
+    const LIMIT = 100;
+
+    const $ = id => document.getElementById(id);
+
+    // よく使われる暴言・侮辱語などを名前から除外。
+    // 完全な辞書ではないため、必要ならここへ自由に追加できます。
+    const BAD_WORDS = [
+        "死ね", "しね", "消えろ", "きえろ", "殺す", "ころす",
+        "馬鹿", "ばか", "バカ", "阿呆", "あほ", "アホ",
+        "ゴミ", "ごみ", "クズ", "くず", "カス", "かす",
+        "糞", "くそ", "クソ", "うんこ", "ウンコ",
+        "fuck", "fucking", "shit", "bitch", "asshole", "damn"
+    ];
+
+    const normalizeName = value => {
+        let name = String(value ?? "").normalize("NFKC").trim();
+        name = Array.from(name).slice(0, MAX_NAME_LENGTH).join("");
+        if (!name) return "名無し";
+
+        const lower = name.toLocaleLowerCase("en-US");
+        if (BAD_WORDS.some(word => lower.includes(word.toLocaleLowerCase("en-US")))) {
+            return "ペプシコーラ";
+        }
+        return name;
+    };
+
+    const getLocalRanking = () => {
+        try {
+            const data = JSON.parse(localStorage.getItem(RANKING_STORAGE_KEY) || "[]");
+            return Array.isArray(data) ? data.filter(x => x && typeof x === "object") : [];
+        } catch (_) {
+            return [];
+        }
+    };
+
+    const setLocalRanking = data => {
+        try {
+            localStorage.setItem(RANKING_STORAGE_KEY, JSON.stringify(data.slice(0, LIMIT)));
+            return true;
+        } catch (_) {
+            return false;
+        }
+    };
+
+    const periodMs = {
+        month: 30 * 24 * 60 * 60 * 1000,
+        week: 7 * 24 * 60 * 60 * 1000,
+        "3day": 3 * 24 * 60 * 60 * 1000
+    };
+
+    const periodLabel = {
+        month: "1か月",
+        week: "1週間",
+        "3day": "3日"
+    };
+
+    const getScore = () => {
+        const el = $("score");
+        const value = el ? Number.parseInt(el.textContent.replace(/[^0-9-]/g, ""), 10) : 0;
+        return Number.isFinite(value) ? value : 0;
+    };
+
+    const getMode = () => {
+        const el = $("resultMode");
+        return el && el.textContent.trim() ? el.textContent.trim() : "通常";
+    };
+
+    const getPeriodEntries = period => {
+        const cutoff = Date.now() - (periodMs[period] || periodMs.month);
+        return getLocalRanking()
+            .filter(x => Number(x.time) >= cutoff)
+            .sort((a, b) => (Number(b.score) - Number(a.score)) || (Number(a.time) - Number(b.time)))
+            .slice(0, 50);
+    };
+
+    const renderRanking = async period => {
+        const list = $("rankingList");
+        if (!list) return;
+        list.innerHTML = '<div class="ranking-empty">読み込み中...</div>';
+
+        let entries = null;
+        let usingLocal = true;
+
+        if (RANKING_API_URL) {
+            try {
+                const url = new URL(RANKING_API_URL, location.href);
+                url.searchParams.set("period", period);
+                const response = await fetch(url.toString(), {
+                    method: "GET",
+                    headers: { "Accept": "application/json" },
+                    cache: "no-store"
+                });
+                if (!response.ok) throw new Error("ranking http " + response.status);
+                const json = await response.json();
+                entries = Array.isArray(json) ? json : (Array.isArray(json.ranking) ? json.ranking : []);
+                usingLocal = false;
+            } catch (e) {
+                console.warn("ランキングAPIを利用できないためローカルランキングに切り替えます:", e);
+            }
+        }
+
+        if (entries === null) entries = getPeriodEntries(period);
+
+        entries = entries
+            .map(x => ({
+                name: String(x.name ?? "名無し"),
+                score: Number(x.score) || 0,
+                mode: String(x.mode ?? "通常"),
+                time: Number(x.time) || Date.now()
+            }))
+            .sort((a, b) => (b.score - a.score) || (a.time - b.time))
+            .slice(0, 50);
+
+        if (!entries.length) {
+            list.innerHTML = '<div class="ranking-empty">この期間の記録はありません。</div>';
+        } else {
+            const fragment = document.createDocumentFragment();
+            entries.forEach((entry, i) => {
+                const row = document.createElement("div");
+                row.className = "ranking-row";
+
+                const rank = document.createElement("span");
+                rank.className = "ranking-rank";
+                rank.textContent = `${i + 1}.`;
+
+                const name = document.createElement("span");
+                name.className = "ranking-name";
+                name.textContent = entry.name.slice(0, MAX_NAME_LENGTH);
+
+                const mode = document.createElement("span");
+                mode.className = "ranking-mode";
+                mode.textContent = entry.mode;
+
+                const score = document.createElement("span");
+                score.className = "ranking-score";
+                score.textContent = `${entry.score} pt`;
+
+                row.append(rank, name, mode, score);
+                fragment.appendChild(row);
+            });
+            list.replaceChildren(fragment);
+        }
+
+        const message = $("rankingMessage");
+        if (message) {
+            message.textContent = usingLocal
+                ? `現在はこのブラウザ内のランキングです（${periodLabel[period] || "1か月"}）。`
+                : `${periodLabel[period] || "1か月"}ランキングを表示中。`;
+        }
+    };
+
+    const openRanking = () => {
+        $("ranking").classList.remove("hidden");
+        $("rankingName").value = "";
+        $("rankingMessage").textContent = "";
+        const active = document.querySelector(".rank-tab.active");
+        renderRanking(active ? active.dataset.period : "month");
+    };
+
+    const closeRanking = () => {
+        $("ranking").classList.add("hidden");
+    };
+
+    const registerRanking = async () => {
+        const input = $("rankingName");
+        const message = $("rankingMessage");
+        const rawName = String(input.value ?? "").normalize("NFKC").trim();
+        const wasFiltered = BAD_WORDS.some(word =>
+            rawName.toLocaleLowerCase("en-US").includes(word.toLocaleLowerCase("en-US"))
+        );
+        const name = normalizeName(rawName);
+        const score = getScore();
+        const mode = getMode();
+        const item = { name, score, mode, time: Date.now() };
+
+        input.value = name.slice(0, MAX_NAME_LENGTH);
+
+        if (RANKING_API_URL) {
+            try {
+                const response = await fetch(RANKING_API_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    body: JSON.stringify(item)
+                });
+                if (!response.ok) throw new Error("ranking http " + response.status);
+                message.textContent = wasFiltered
+                    ? "不適切な名前のため「ペプシコーラ」に変更して登録しました。"
+                    : "ランキングに登録しました。";
+            } catch (e) {
+                console.warn("ランキングAPIへの登録に失敗したためローカル保存します:", e);
+                const data = getLocalRanking();
+                data.push(item);
+                setLocalRanking(data);
+                message.textContent = "サーバーに接続できないため、このブラウザに保存しました。";
+            }
+        } else {
+            const data = getLocalRanking();
+            data.push(item);
+            setLocalRanking(data);
+            message.textContent = wasFiltered
+                ? "不適切な名前のため「ペプシコーラ」に変更して登録しました。"
+                : "ランキングに登録しました。";
+        }
+
+        renderRanking("month");
+    };
+
+    // グローバル化。元の暗号化ゲーム本体とは独立して動かす。
+    window.openRanking = openRanking;
+    window.closeRanking = closeRanking;
+    window.registerRanking = registerRanking;
+    window.renderRanking = renderRanking;
+
+    $("openRankingButton").addEventListener("click", openRanking);
+    $("registerRankingButton").addEventListener("click", openRanking);
+    $("submitRankingButton").addEventListener("click", registerRanking);
+    $("rankingName").addEventListener("input", () => {
+        const chars = Array.from($("rankingName").value);
+        if (chars.length > MAX_NAME_LENGTH) {
+            $("rankingName").value = chars.slice(0, MAX_NAME_LENGTH).join("");
+        }
+    });
+    $("rankingName").addEventListener("keydown", e => {
+        if (e.key === "Enter") registerRanking();
+    });
+    $("rankingCloseButton").addEventListener("click", closeRanking);
+
+    document.querySelectorAll(".rank-tab").forEach(btn => btn.addEventListener("click", () => {
+        document.querySelectorAll(".rank-tab").forEach(x => x.classList.remove("active"));
+        btn.classList.add("active");
+        renderRanking(btn.dataset.period);
+    }));
+})();
+</script>
+
+<!-- file:// で不要なGoatCounterエラーを出さない -->
+<script>
+if (location.protocol !== "file:") {
+    const s = document.createElement("script");
+    s.src = "https://gc.zgo.at/count.js";
+    s.async = true;
+    s.setAttribute("data-goatcounter", "https://al1scut.goatcounter.com/count");
+    document.head.appendChild(s);
+}
+</script>
 
 </body>
 </html>
