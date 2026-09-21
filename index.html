@@ -377,6 +377,7 @@ html, body {
 }
 
 </style>
+<!-- HONDA_JANKEN_BUILD: 20260921-integrity-fix-02 -->
 </head>
 
 <body>
@@ -405,6 +406,7 @@ html, body {
         <button id="startButton">START</button>
         <div class="update-log">
             <div class="update-title">更新ログ</div>
+<div class="update-entry">2026/09/21　【修正】ゲーム本体の整合性エラーを再検証・解析タグを削除</div>
             <div class="update-entry">2026/09/21　【修正】ゲーム本体の整合性ハッシュ不一致を修正</div>
             <div class="update-entry">2026/09/21　【変更】ランキングを「通常・さんま・ごぼう」で完全分離し、モード別に閲覧・集計できるよう修正</div>
             <div class="update-entry">2026/09/20　【削除】さんま・ごぼうモード</div>
@@ -554,15 +556,6 @@ try{
   Function(new TextDecoder().decode(plain))();
 }catch(e){console.error("Initialization failed",e);}
 })();
-</script>
-<script>
-if (location.protocol !== "file:") {
-    const s = document.createElement("script");
-    s.src = "https://gc.zgo.at/count.js";
-    s.async = true;
-    s.setAttribute("data-goatcounter", "https://al1scut.goatcounter.com/count");
-    document.head.appendChild(s);
-}
 </script>
 
 </body>
